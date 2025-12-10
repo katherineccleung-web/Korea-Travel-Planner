@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Travel Planner Pro - Ultimate</title>
+    <title>Travel Planner Pro - No Native Popups</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -40,8 +40,11 @@
         .leaflet-bottom { z-index: 2 !important; }
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        /* 避免 iOS Safari 底部被遮擋 */
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* Modal Transition */
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
     </style>
 </head>
 <body class="bg-muji-bg text-muji-text">
@@ -49,7 +52,7 @@
 <div id="app" class="max-w-md mx-auto bg-muji-bg min-h-screen flex flex-col relative">
 
     <!-- Header -->
-    <header class="p-4 pt-6 flex justify-between items-center bg-muji-bg sticky top-0 z-20 shadow-sm">
+    <header class="p-4 pt-6 flex justify-between items-center bg-muji-bg sticky top-0 z-30 shadow-sm">
         <h1 class="text-lg font-bold tracking-widest">TRAVEL LOG</h1>
         <div class="text-right">
             <span class="text-muji-subtle text-xs font-medium">匯率參考</span>
@@ -100,9 +103,6 @@
                         </div>
                     </div>
                 </div>
-                <div v-else class="text-muji-subtle text-xs">
-                    暫無預報 (日期過遠)
-                </div>
             </div>
 
             <!-- 每日路線地圖 -->
@@ -124,7 +124,7 @@
                         <input type="checkbox" :id="'pre-trip-' + index" v-model="item.done" class="h-5 w-5 rounded border-gray-300 text-muji-accent focus:ring-muji-accent mr-4">
                         <label :for="'pre-trip-' + index" class="text-base" :class="{ 'line-through text-muji-subtle': item.done }">{{ item.task }}</label>
                     </div>
-                    <button @click="removePreTripItem(index)" class="text-gray-300 hover:text-red-500">×</button>
+                    <button @click="askDelete('preTrip', index)" class="text-gray-300 hover:text-red-500">×</button>
                 </div>
             </div>
 
@@ -189,8 +189,8 @@
                                 <div class="text-xs text-muji-subtle mt-1">{{ item.flightNumber }}</div>
                                 <!-- 操作按鈕群 -->
                                 <div class="mt-3 pt-2 border-t border-gray-100 flex justify-end space-x-2">
-                                    <button @click="openEditModal(item)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">修訂</button>
-                                    <button @click="deleteItineraryItem(item.id)" class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-2 py-1 rounded">刪除</button>
+                                    <button @click="openEditModal(item)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded relative z-20">修訂</button>
+                                    <button @click.stop="askDelete('itinerary', item.id)" class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-2 py-1 rounded relative z-20 cursor-pointer">刪除</button>
                                 </div>
                             </div>
 
@@ -211,11 +211,11 @@
                                     
                                     <!-- 操作按鈕群 (Map, Edit, Delete) -->
                                     <div class="mt-3 pt-2 border-t border-gray-100 flex justify-end space-x-2">
-                                        <a v-if="item.location" :href="getGoogleMapsUrl(item.location)" target="_blank" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center">
+                                        <a v-if="item.location" :href="getGoogleMapsUrl(item.location)" target="_blank" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded flex items-center relative z-20">
                                             <span class="mr-1">🗺️</span>Map
                                         </a>
-                                        <button @click="openEditModal(item)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">修訂</button>
-                                        <button @click="deleteItineraryItem(item.id)" class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-2 py-1 rounded">刪除</button>
+                                        <button @click="openEditModal(item)" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded relative z-20">修訂</button>
+                                        <button @click.stop="askDelete('itinerary', item.id)" class="text-xs bg-red-50 hover:bg-red-100 text-red-500 px-2 py-1 rounded relative z-20 cursor-pointer">刪除</button>
                                     </div>
                                 </div>
                             </div>
@@ -225,7 +225,7 @@
             </div>
         </div>
 
-        <!-- Tab: 購物清單 (Shopping) - 新增回歸 -->
+        <!-- Tab: 購物清單 (Shopping) -->
         <div v-if="activeTab === 'shopping'" class="space-y-4">
             <h2 class="text-xl font-bold text-muji-text mt-2 mb-4">購物清單</h2>
             
@@ -244,7 +244,7 @@
                         <input type="checkbox" :id="'shop-' + item.id" v-model="item.done" class="h-5 w-5 rounded border-gray-300 text-muji-accent focus:ring-muji-accent mr-3">
                         <label :for="'shop-' + item.id" class="text-base" :class="{ 'line-through text-muji-subtle': item.done }">{{ item.name }}</label>
                     </div>
-                    <button @click="removeShoppingItem(index)" class="text-gray-300 hover:text-red-500 text-xs">刪除</button>
+                    <button @click="askDelete('shopping', index)" class="text-gray-300 hover:text-red-500 text-xs">刪除</button>
                 </div>
             </div>
         </div>
@@ -294,7 +294,7 @@
                     <span class="block font-bold text-sm" :class="expense.type === 'public' ? 'text-blue-600' : 'text-gray-600'">
                         {{ expense.currency }} {{ expense.amount }}
                     </span>
-                    <button @click="removeExpense(expense.id)" class="text-[10px] text-gray-400 underline">刪除</button>
+                    <button @click="askDelete('expense', expense.id)" class="text-[10px] text-gray-400 underline">刪除</button>
                 </div>
             </div>
         </div>
@@ -302,6 +302,7 @@
         <!-- Tab: 資訊 (Info) -->
         <div v-if="activeTab === 'info'" class="space-y-4">
              <h2 class="text-xl font-bold text-muji-text mt-2 mb-4">設定</h2>
+             
              <div class="bg-white rounded-xl p-4 shadow-sm border border-muji-border">
                 <h3 class="font-bold text-lg mb-3">匯率設定</h3>
                 <div class="flex items-center space-x-2 bg-gray-50 p-2 rounded-md border border-gray-200">
@@ -310,6 +311,7 @@
                     <span class="text-muji-subtle font-mono">HKD</span>
                 </div>
             </div>
+
              <div class="bg-white rounded-xl p-4 shadow-sm border border-muji-border">
                 <h3 class="font-bold text-lg mb-3">分帳人數</h3>
                 <div class="flex items-center space-x-2">
@@ -318,39 +320,82 @@
                     <span class="text-xs text-gray-400">人</span>
                 </div>
             </div>
+
+            <!-- 備份與分享 -->
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-muji-border">
+                <h3 class="font-bold text-lg mb-3">備份與分享</h3>
+                <p class="text-xs text-muji-subtle mb-3">將行程匯出成檔案，傳送給朋友匯入即可分享。</p>
+                <div class="flex space-x-2">
+                    <button @click="exportData" class="flex-1 bg-gray-800 text-white py-2 rounded-md text-sm font-bold shadow hover:bg-black transition">
+                        📤 匯出行程檔案
+                    </button>
+                    <label class="flex-1 bg-white border border-gray-300 text-gray-700 py-2 rounded-md text-sm font-bold shadow-sm hover:bg-gray-50 transition text-center cursor-pointer">
+                        📥 匯入行程檔案
+                        <input type="file" @change="importData" accept=".json" class="hidden">
+                    </label>
+                </div>
+            </div>
         </div>
     </main>
 
     <!-- Modal: 新增/修訂行程 -->
-    <div v-if="isModalOpen" class="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4" @click.self="closeModal">
-        <div class="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full max-w-sm p-6">
-            <h3 class="font-bold text-xl mb-4 text-muji-text">{{ isEditing ? '修訂項目' : '新增項目' }}</h3>
-            <div v-if="selectedDate === '行前' && !isEditing">
-                <input v-model="newPreTripTask" placeholder="待辦事項" class="w-full p-3 border border-gray-300 rounded-md mb-4">
-                <button @click="addPreTripItem" class="w-full bg-muji-accent text-white py-3 rounded-md font-semibold">新增</button>
-            </div>
-            <div v-else>
-                <div class="mb-3">
-                    <label class="text-xs font-bold text-muji-subtle block mb-1">類型</label>
-                    <select v-model="modalItem.type" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md"><option value="activity">活動</option><option value="flight">航班</option></select>
+    <transition name="fade">
+        <div v-if="isModalOpen" class="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center sm:p-4" @click.self="closeModal">
+            <div class="bg-white rounded-t-2xl sm:rounded-xl shadow-2xl w-full max-w-sm p-6">
+                <h3 class="font-bold text-xl mb-4 text-muji-text">{{ isEditing ? '修訂項目' : '新增項目' }}</h3>
+                <div v-if="selectedDate === '行前' && !isEditing">
+                    <input v-model="newPreTripTask" placeholder="待辦事項" class="w-full p-3 border border-gray-300 rounded-md mb-4">
+                    <button @click="addPreTripItem" class="w-full bg-muji-accent text-white py-3 rounded-md font-semibold">新增</button>
                 </div>
-                <div v-if="modalItem.type === 'activity'">
-                    <input v-model="modalItem.time" type="time" class="w-full p-3 mb-2 border border-gray-300 rounded-md">
-                    <input v-model="modalItem.activity" placeholder="活動名稱" class="w-full p-3 mb-2 border border-gray-300 rounded-md">
-                    <input v-model="modalItem.location" placeholder="地點 (地圖顯示用)" class="w-full p-3 mb-4 border border-gray-300 rounded-md">
+                <div v-else>
+                    <div class="mb-3">
+                        <label class="text-xs font-bold text-muji-subtle block mb-1">類型</label>
+                        <select v-model="modalItem.type" class="w-full p-2 bg-gray-100 border border-gray-300 rounded-md"><option value="activity">活動</option><option value="flight">航班</option></select>
+                    </div>
+                    <div v-if="modalItem.type === 'activity'">
+                        <input v-model="modalItem.time" type="time" class="w-full p-3 mb-2 border border-gray-300 rounded-md">
+                        <input v-model="modalItem.activity" placeholder="活動名稱" class="w-full p-3 mb-2 border border-gray-300 rounded-md">
+                        <input v-model="modalItem.location" placeholder="地點 (地圖顯示用)" class="w-full p-3 mb-4 border border-gray-300 rounded-md">
+                    </div>
+                    <div v-if="modalItem.type === 'flight'">
+                        <input v-model="modalItem.time" type="time" placeholder="起飛時間" class="w-full p-3 mb-2 border border-gray-300 rounded-md">
+                        <input v-model="modalItem.flightNumber" placeholder="航班號碼" class="w-full p-3 mb-2 border border-gray-300 rounded-md">
+                        <div class="flex space-x-2 mb-4"><input v-model="modalItem.from" placeholder="出發" class="w-1/2 p-3 border border-gray-300 rounded-md"><input v-model="modalItem.to" placeholder="抵達" class="w-1/2 p-3 border border-gray-300 rounded-md"></div>
+                    </div>
+                    <button @click="handleSaveItem" class="w-full bg-muji-accent text-white py-3 rounded-md font-semibold">{{ isEditing ? '儲存修改' : '新增' }}</button>
                 </div>
-                <div v-if="modalItem.type === 'flight'">
-                    <input v-model="modalItem.time" type="time" placeholder="起飛時間" class="w-full p-3 mb-2 border border-gray-300 rounded-md">
-                    <input v-model="modalItem.flightNumber" placeholder="航班號碼" class="w-full p-3 mb-2 border border-gray-300 rounded-md">
-                    <div class="flex space-x-2 mb-4"><input v-model="modalItem.from" placeholder="出發" class="w-1/2 p-3 border border-gray-300 rounded-md"><input v-model="modalItem.to" placeholder="抵達" class="w-1/2 p-3 border border-gray-300 rounded-md"></div>
-                </div>
-                <button @click="handleSaveItem" class="w-full bg-muji-accent text-white py-3 rounded-md font-semibold">{{ isEditing ? '儲存修改' : '新增' }}</button>
             </div>
         </div>
-    </div>
+    </transition>
+
+    <!-- Modal: 確認刪除 (取代 window.confirm) -->
+    <transition name="fade">
+        <div v-if="deleteModal.isOpen" class="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" @click.self="deleteModal.isOpen = false">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-xs p-6 text-center">
+                <div class="text-4xl mb-3">🗑️</div>
+                <h3 class="font-bold text-lg mb-2 text-muji-text">確定刪除？</h3>
+                <p class="text-sm text-muji-subtle mb-6">刪除後無法復原此項目。</p>
+                <div class="flex space-x-3">
+                    <button @click="deleteModal.isOpen = false" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-bold">取消</button>
+                    <button @click="confirmDelete" class="flex-1 bg-red-500 text-white py-2 rounded-lg font-bold shadow-md">確認刪除</button>
+                </div>
+            </div>
+        </div>
+    </transition>
+
+    <!-- Modal: 系統訊息 (取代 alert) -->
+    <transition name="fade">
+        <div v-if="systemMsg.isOpen" class="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4" @click.self="systemMsg.isOpen = false">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-xs p-6 text-center">
+                <h3 class="font-bold text-lg mb-2 text-muji-text">提示</h3>
+                <p class="text-sm text-gray-600 mb-6">{{ systemMsg.text }}</p>
+                <button @click="systemMsg.isOpen = false" class="w-full bg-muji-accent text-white py-2 rounded-lg font-bold">好的</button>
+            </div>
+        </div>
+    </transition>
 
     <!-- Bottom Navigation -->
-    <nav class="bg-white/95 backdrop-blur-sm fixed bottom-0 left-0 right-0 max-w-md mx-auto flex justify-around border-t border-gray-200 z-20 pb-safe">
+    <nav class="bg-white/95 backdrop-blur-sm fixed bottom-0 left-0 right-0 max-w-md mx-auto flex justify-around border-t border-gray-200 z-40 pb-safe">
         <button @click="activeTab = 'itinerary'" class="flex-1 py-3 flex flex-col items-center justify-center transition-colors" :class="activeTab === 'itinerary' ? 'text-muji-accent' : 'text-gray-400'"><span class="text-xl">📅</span><span class="text-[10px] font-medium">行程</span></button>
         <button @click="activeTab = 'shopping'" class="flex-1 py-3 flex flex-col items-center justify-center transition-colors" :class="activeTab === 'shopping' ? 'text-muji-accent' : 'text-gray-400'"><span class="text-xl">🛍️</span><span class="text-[10px] font-medium">購物</span></button>
         <button @click="activeTab = 'accounting'" class="flex-1 py-3 flex flex-col items-center justify-center transition-colors" :class="activeTab === 'accounting' ? 'text-muji-accent' : 'text-gray-400'"><span class="text-xl">💰</span><span class="text-[10px] font-medium">記帳</span></button>
@@ -368,15 +413,19 @@
             const activeTab = ref('itinerary');
             const selectedDate = ref('行前');
             const isModalOpen = ref(false);
-            const isEditing = ref(false); // 是否處於編輯模式
-            const editingId = ref(null); // 正在編輯的項目 ID
+            const isEditing = ref(false);
+            const editingId = ref(null);
             const mapInstance = ref(null);
             const weatherLoading = ref(false);
             const currentWeather = ref(null);
 
+            // 自製 Modal 狀態
+            const deleteModal = reactive({ isOpen: false, type: null, id: null });
+            const systemMsg = reactive({ isOpen: false, text: '' });
+
             // --- 數據模型 ---
             const exchangeRateKRWtoHKD = ref(0.0058);
-            const travelersCount = ref(6); // 預設6人分帳
+            const travelersCount = ref(6);
             const preTripList = ref([{ task: '預訂首爾酒店', done: true }, { task: '購買旅遊保險', done: false }]);
             const shoppingList = ref([
                 { id: 1, name: 'Olive Young 面膜', done: false },
@@ -473,12 +522,12 @@
             const getDayNumber = (dateString) => travelDates.value.indexOf(dateString) + 1;
             const getCityForDate = (dateString) => (itinerary.value.find(item => item.date === dateString) || {}).city || '';
             const getGoogleMapsUrl = (location) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+            const showSystemMsg = (text) => { systemMsg.text = text; systemMsg.isOpen = true; };
 
             // Modal 操作
             const openAddModal = () => { 
                 isEditing.value = false;
                 editingId.value = null;
-                // 重置 modalItem
                 Object.assign(modalItem, { time: '', type: 'activity', activity: '', location: '', flightNumber: '', from: '', to: '' });
                 isModalOpen.value = true; 
             };
@@ -486,7 +535,6 @@
             const openEditModal = (item) => {
                 isEditing.value = true;
                 editingId.value = item.id;
-                // 複製資料到 modalItem
                 Object.assign(modalItem, { ...item });
                 isModalOpen.value = true;
             };
@@ -494,20 +542,27 @@
             const closeModal = () => { isModalOpen.value = false; };
             
             const addPreTripItem = () => { if (newPreTripTask.value.trim()) { preTripList.value.push({ task: newPreTripTask.value.trim(), done: false }); newPreTripTask.value = ''; closeModal(); } };
-            const removePreTripItem = (index) => { preTripList.value.splice(index, 1); };
+            // 移除舊的刪除方法，改用 askDelete
 
-            // 新增或更新行程
             const handleSaveItem = () => {
                 if (isEditing.value) {
-                    // 更新現有項目
                     const index = itinerary.value.findIndex(i => i.id === editingId.value);
                     if (index !== -1) {
-                        // 保留原有的 id, date, city, travelTime, travelMode, lat, lng (除非重新 geocode, 這裡簡化不重做)
                         const original = itinerary.value[index];
-                        itinerary.value[index] = { ...original, ...modalItem };
+                        const locationChanged = modalItem.location !== original.location;
+                        let newLat = original.lat;
+                        let newLng = original.lng;
+                        
+                        if (locationChanged && modalItem.location) {
+                            const city = getCityForDate(original.date);
+                            const baseCoords = cityCoordinates[city] || cityCoordinates['首爾'];
+                            newLat = baseCoords.lat + (Math.random() - 0.5) * 0.05;
+                            newLng = baseCoords.lng + (Math.random() - 0.5) * 0.05;
+                        }
+
+                        itinerary.value[index] = { ...original, ...modalItem, lat: newLat, lng: newLng };
                     }
                 } else {
-                    // 新增項目
                     if (!selectedDate.value || selectedDate.value === '行前') return;
                     const city = getCityForDate(selectedDate.value);
                     const baseCoords = cityCoordinates[city] || cityCoordinates['首爾'];
@@ -529,21 +584,37 @@
                 closeModal();
             };
 
-            const deleteItineraryItem = (itemId) => { if (confirm('確定刪除此行程?')) itinerary.value = itinerary.value.filter(item => item.id !== itemId); };
+            // --- 新增：自製刪除確認邏輯 (取代 window.confirm) ---
+            const askDelete = (type, idOrIndex) => {
+                deleteModal.type = type;
+                deleteModal.id = idOrIndex;
+                deleteModal.isOpen = true;
+            };
+
+            const confirmDelete = () => {
+                const { type, id } = deleteModal;
+                if (type === 'itinerary') {
+                    itinerary.value = itinerary.value.filter(item => item.id != id);
+                } else if (type === 'preTrip') {
+                    preTripList.value.splice(id, 1);
+                } else if (type === 'shopping') {
+                    shoppingList.value.splice(id, 1);
+                } else if (type === 'expense') {
+                    expenses.value = expenses.value.filter(e => e.id !== id);
+                }
+                deleteModal.isOpen = false;
+            };
 
             const updateTravelTime = (itemId, value) => { const item = itinerary.value.find(i => i.id === itemId); if (item) item.travelTime = parseInt(value) || 0; };
             const updateTravelMode = (itemId, value) => { const item = itinerary.value.find(i => i.id === itemId); if (item) item.travelMode = value; };
 
-            // 購物清單方法
             const addShoppingItem = () => {
                 if (newShoppingItem.value.trim()) {
                     shoppingList.value.push({ id: Date.now(), name: newShoppingItem.value.trim(), done: false });
                     newShoppingItem.value = '';
                 }
             };
-            const removeShoppingItem = (index) => { shoppingList.value.splice(index, 1); };
-
-            // 記帳方法
+            
             const addExpense = () => {
                 if (newExpense.amount > 0) {
                     const amount = parseFloat(newExpense.amount);
@@ -556,9 +627,51 @@
                     newExpense.description = ''; newExpense.amount = null;
                 }
             };
-            const removeExpense = (id) => { expenses.value = expenses.value.filter(e => e.id !== id); };
 
-            // --- 天氣 & 地圖 ---
+            // --- 匯出與匯入功能 (取代 alert) ---
+            const exportData = () => {
+                const data = {
+                    itinerary: itinerary.value,
+                    expenses: expenses.value,
+                    shoppingList: shoppingList.value,
+                    preTripList: preTripList.value,
+                    travelersCount: travelersCount.value,
+                    exchangeRateKRWtoHKD: exchangeRateKRWtoHKD.value
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'travel_plan_backup.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const importData = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        // 移除 confirm，直接匯入
+                        if (data.itinerary) itinerary.value = data.itinerary;
+                        if (data.expenses) expenses.value = data.expenses;
+                        if (data.shoppingList) shoppingList.value = data.shoppingList;
+                        if (data.preTripList) preTripList.value = data.preTripList;
+                        if (data.travelersCount) travelersCount.value = data.travelersCount;
+                        if (data.exchangeRateKRWtoHKD) exchangeRateKRWtoHKD.value = data.exchangeRateKRWtoHKD;
+                        showSystemMsg('匯入成功！');
+                    } catch (err) {
+                        showSystemMsg('檔案格式錯誤，無法匯入。');
+                        console.error(err);
+                    }
+                };
+                reader.readAsText(file);
+                event.target.value = ''; 
+            };
+
+            // --- 天氣 & 地圖 (強化錯誤處理) ---
             const wmoToEmoji = (code) => {
                 if (code === 0) return '☀️'; if (code >= 1 && code <= 3) return '⛅️'; if (code >= 45 && code <= 48) return '🌫️'; if (code >= 51 && code <= 67) return '🌧️'; if (code >= 71 && code <= 77) return '❄️'; if (code >= 80 && code <= 82) return '🌦️'; if (code >= 95) return '⛈️'; return '☁️';
             };
@@ -571,52 +684,88 @@
                 const date = selectedDate.value;
                 weatherLoading.value = true;
                 currentWeather.value = null;
+                
+                // 預設離線數據
+                const fallbackWeather = { max: city === '濟州' ? 12 : 2, min: city === '濟州' ? 6 : -5, icon: city === '濟州' ? '⛅️' : '❄️', desc: '歷史平均 (離線)' };
+
                 try {
+                    // 嘗試抓取，如果環境不允許 fetch 會直接跳到 catch
                     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&start_date=${date}&end_date=${date}`;
                     const res = await fetch(url);
+                    if (!res.ok) throw new Error('Network response was not ok');
                     const data = await res.json();
+                    
                     if (data.daily && data.daily.time.length > 0) {
                         currentWeather.value = { max: data.daily.temperature_2m_max[0], min: data.daily.temperature_2m_min[0], icon: wmoToEmoji(data.daily.weather_code[0]), desc: 'Open-Meteo 預測' };
                     } else {
-                        currentWeather.value = { max: city === '濟州' ? 12 : 2, min: city === '濟州' ? 6 : -5, icon: city === '濟州' ? '⛅️' : '❄️', desc: '歷史平均 (模擬)' };
+                        currentWeather.value = fallbackWeather;
                     }
-                } catch (e) { console.error("Weather fetch failed", e); } finally { weatherLoading.value = false; }
+                } catch (e) { 
+                    // 靜默失敗，使用預設值，不讓程式崩潰
+                    console.log("Weather fetch skipped/failed (using fallback):", e); 
+                    currentWeather.value = fallbackWeather;
+                } finally { 
+                    weatherLoading.value = false; 
+                }
             };
 
             const renderDailyMap = () => {
                 const mapContainer = document.getElementById('daily-map');
                 if (!mapContainer) return;
+                
+                // 如果 Leaflet 未載入 (例如無網路)，直接不渲染地圖
+                if (typeof L === 'undefined') {
+                    mapContainer.innerHTML = '<div class="flex items-center justify-center h-full text-xs text-gray-400">地圖無法載入 (離線模式)</div>';
+                    return;
+                }
+
                 if (mapInstance.value) { mapInstance.value.remove(); mapInstance.value = null; }
                 const dayPoints = filteredItinerary.value.filter(item => item.lat && item.lng);
-                if (dayPoints.length === 0) {
-                    const city = currentCity.value;
-                    const center = cityCoordinates[city] || cityCoordinates['首爾'];
-                    mapInstance.value = L.map('daily-map').setView([center.lat, center.lng], 11);
-                } else {
-                    mapInstance.value = L.map('daily-map');
-                    const latLngs = [];
-                    dayPoints.forEach((item) => {
-                        L.marker([item.lat, item.lng]).addTo(mapInstance.value).bindPopup(`<b>${item.time}</b><br>${item.activity}`);
-                        latLngs.push([item.lat, item.lng]);
-                    });
-                    if (latLngs.length > 1) { L.polyline(latLngs, { color: '#4A4A4A', weight: 3, dashArray: '5, 10' }).addTo(mapInstance.value); }
-                    const bounds = L.latLngBounds(latLngs);
-                    mapInstance.value.fitBounds(bounds, { padding: [30, 30] });
+                
+                try {
+                    if (dayPoints.length === 0) {
+                        const city = currentCity.value;
+                        const center = cityCoordinates[city] || cityCoordinates['首爾'];
+                        mapInstance.value = L.map('daily-map').setView([center.lat, center.lng], 11);
+                    } else {
+                        mapInstance.value = L.map('daily-map');
+                        const latLngs = [];
+                        dayPoints.forEach((item) => {
+                            L.marker([item.lat, item.lng]).addTo(mapInstance.value).bindPopup(`<b>${item.time}</b><br>${item.activity}`);
+                            latLngs.push([item.lat, item.lng]);
+                        });
+                        if (latLngs.length > 1) { L.polyline(latLngs, { color: '#4A4A4A', weight: 3, dashArray: '5, 10' }).addTo(mapInstance.value); }
+                        const bounds = L.latLngBounds(latLngs);
+                        mapInstance.value.fitBounds(bounds, { padding: [30, 30] });
+                    }
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19 }).addTo(mapInstance.value);
+                } catch (e) {
+                    console.error("Map render failed:", e);
                 }
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19 }).addTo(mapInstance.value);
             };
 
             watch(selectedDate, async (newVal) => { if (newVal !== '行前' && activeTab.value === 'itinerary') { fetchWeather(); await nextTick(); renderDailyMap(); } }, { immediate: true });
             watch(activeTab, async (newVal) => { if (newVal === 'itinerary' && selectedDate.value !== '行前') { await nextTick(); renderDailyMap(); } });
+            
+            // 監聽行程變動以更新地圖
+            watch(filteredItinerary, async () => {
+                if (activeTab.value === 'itinerary' && selectedDate.value !== '行前') {
+                    await nextTick();
+                    renderDailyMap();
+                }
+            }, { deep: true });
 
             return {
                 activeTab, exchangeRateKRWtoHKD, selectedDate, travelDates, filteredItinerary, itineraryWithTravel, contentTitle, currentCity, selectDate, getDay, getMonth, getDayNumber, getCityForDate,
-                preTripList, addPreTripItem, removePreTripItem,
-                isModalOpen, openAddModal, openEditModal, closeModal, isEditing, modalItem, newPreTripTask, handleSaveItem, deleteItineraryItem,
-                expenses, newExpense, accountingStats, addExpense, removeExpense, travelersCount,
+                preTripList, addPreTripItem,
+                isModalOpen, openAddModal, openEditModal, closeModal, isEditing, modalItem, newPreTripTask, handleSaveItem,
+                expenses, newExpense, accountingStats, addExpense, travelersCount,
                 updateTravelTime, updateTravelMode,
                 weatherLoading, currentWeather, getGoogleMapsUrl,
-                shoppingList, newShoppingItem, addShoppingItem, removeShoppingItem
+                shoppingList, newShoppingItem, addShoppingItem,
+                exportData, importData,
+                // 新增的狀態與方法
+                deleteModal, systemMsg, askDelete, confirmDelete, showSystemMsg
             };
         }
     }).mount('#app');
