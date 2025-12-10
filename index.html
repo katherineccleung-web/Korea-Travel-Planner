@@ -1,420 +1,228 @@
-<script>
-    const { createApp, ref, reactive, computed, onMounted, watch, nextTick } = Vue;
-
-    createApp({
-        setup() {
-            // --- 狀態管理 ---
-            const activeTab = ref('itinerary');
-            const selectedDate = ref('行前');
-            const isModalOpen = ref(false);
-            const isEditing = ref(false);
-            const editingId = ref(null);
-            const mapInstance = ref(null);
-            const weatherLoading = ref(false);
-            const currentWeather = ref(null);
-            const LOCAL_STORAGE_KEY = 'travel_planner_pro_db_v1';
-
-            // 自製 Modal 狀態
-            const deleteModal = reactive({ isOpen: false, type: null, id: null });
-            const systemMsg = reactive({ isOpen: false, text: '' });
-
-            // --- 數據模型 (預設值) ---
-            const exchangeRateKRWtoHKD = ref(0.0058);
-            const travelersCount = ref(6);
-            const preTripList = ref([{ task: '預訂首爾酒店', done: true }, { task: '購買旅遊保險', done: false }]);
-            const shoppingList = ref([
-                { id: 1, name: 'Olive Young 面膜', done: false },
-                { id: 2, name: 'Gentle Monster 墨鏡', done: false },
-                { id: 3, name: '濟州島橘子巧克力', done: false }
-            ]);
-
-            const cityCoordinates = {
-                '首爾': { lat: 37.5665, lng: 126.9780 },
-                '濟州': { lat: 33.4996, lng: 126.5312 },
-                '香港': { lat: 22.3193, lng: 114.1694 }
-            };
-
-            const itinerary = ref([
-                // Day 1: 24/12 首爾
-                { id: 1, date: '2025-12-24', time: '14:30', type: 'flight', city: '首爾', flightNumber: 'KE608', from: 'HKG', to: 'ICN', location: null, travelTime: 0, travelMode: 'subway' },
-                { id: 2, date: '2025-12-24', time: '17:00', type: 'activity', city: '首爾', activity: '機場快線往弘大', location: 'AREX Station', icon: '🚆', lat: 37.5575, lng: 126.9245, travelTime: 60, travelMode: 'subway' },
-                { id: 3, date: '2025-12-24', time: '19:00', type: 'activity', city: '首爾', activity: '弘大烤肉晚餐', location: 'Hongdae', icon: '🥩', lat: 37.5563, lng: 126.9225, travelTime: 15, travelMode: 'walk' },
-                // Day 2: 25/12 首爾
-                { id: 4, date: '2025-12-25', time: '10:00', type: 'activity', city: '首爾', activity: '景福宮', location: 'Gyeongbokgung', icon: '🏯', lat: 37.5796, lng: 126.9770, travelTime: 0, travelMode: 'subway' },
-                { id: 5, date: '2025-12-25', time: '14:00', type: 'activity', city: '首爾', activity: '北村韓屋村', location: 'Bukchon', icon: '📷', lat: 37.5826, lng: 126.9850, travelTime: 20, travelMode: 'walk' },
-                { id: 6, date: '2025-12-25', time: '18:00', type: 'activity', city: '首爾', activity: '明洞聖誕燈飾', location: 'Myeong-dong', icon: '🎄', lat: 37.5636, lng: 126.9842, travelTime: 30, travelMode: 'subway' },
-                // Day 3: 26/12 首爾
-                { id: 7, date: '2025-12-26', time: '11:00', type: 'activity', city: '首爾', activity: 'The Hyundai Seoul', location: 'Yeouido', icon: '🛍️', lat: 37.5260, lng: 126.9284, travelTime: 0, travelMode: 'subway' },
-                // Day 4: 27/12 首爾 -> 濟州
-                { id: 8, date: '2025-12-27', time: '11:00', type: 'flight', city: '濟州', flightNumber: '7C123', from: 'GMP', to: 'CJU', location: null, travelTime: 0, travelMode: 'car' },
-                { id: 9, date: '2025-12-27', time: '15:00', type: 'activity', city: '濟州', activity: '涯月邑咖啡廳', location: 'Aewol', icon: '☕', lat: 33.4658, lng: 126.3195, travelTime: 40, travelMode: 'car' },
-                // Day 5: 28/12 濟州
-                { id: 10, date: '2025-12-28', time: '10:00', type: 'activity', city: '濟州', activity: '城山日出峰', location: 'Seongsan', icon: '⛰️', lat: 33.4580, lng: 126.9425, travelTime: 0, travelMode: 'car' },
-                // Day 6: 29/12 濟州
-                { id: 11, date: '2025-12-29', time: '10:00', type: 'activity', city: '濟州', activity: '牛島一日遊', location: 'Udo', icon: '🚢', lat: 33.5042, lng: 126.9538, travelTime: 0, travelMode: 'car' },
-                // Day 7: 30/12 濟州
-                { id: 12, date: '2025-12-30', time: '12:00', type: 'activity', city: '濟州', activity: '東門市場', location: 'Dongmun Market', icon: '🍊', lat: 33.5126, lng: 126.5283, travelTime: 0, travelMode: 'car' },
-                // Day 8: 31/12 濟州 -> 回程
-                { id: 13, date: '2025-12-31', time: '14:00', type: 'flight', city: '濟州', flightNumber: 'KE100', from: 'CJU', to: 'HKG', location: null, travelTime: 0, travelMode: 'car' },
-            ]);
-
-            const expenses = ref([
-                { id: 1, description: '弘大烤肉 (公數)', amount: 120000, currency: 'KRW', hkdAmount: 696, type: 'public' },
-                { id: 2, description: '便利店零食 (私數)', amount: 5000, currency: 'KRW', hkdAmount: 29, type: 'private' },
-            ]);
-            
-            // Modal 用的暫存物件
-            const modalItem = reactive({ date: '', time: '', type: 'activity', city: '', activity: '', location: '', flightNumber: '', from: '', to: '' });
-            const newPreTripTask = ref('');
-            const newShoppingItem = ref('');
-            const newExpense = reactive({ description: '', amount: null, currency: 'KRW', type: 'public' });
-
-            // --- 計算屬性 ---
-            const contentTitle = computed(() => (selectedDate.value === '行前') ? '行前清單' : `Day ${getDayNumber(selectedDate.value)} 行程`);
-            const travelDates = computed(() => Array.from(new Set(itinerary.value.map(item => item.date))).sort());
-            const filteredItinerary = computed(() => itinerary.value.filter(item => item.date === selectedDate.value).sort((a, b) => a.time.localeCompare(b.time)));
-            const currentCity = computed(() => filteredItinerary.value.length > 0 ? filteredItinerary.value[0].city : '');
-            
-            const accountingStats = computed(() => {
-                let publicTotal = 0;
-                let privateTotal = 0;
-                expenses.value.forEach(e => {
-                    if (e.type === 'public') publicTotal += e.hkdAmount;
-                    else privateTotal += e.hkdAmount;
-                });
-                return {
-                    total: publicTotal + privateTotal,
-                    publicTotal: publicTotal,
-                    privateTotal: privateTotal,
-                    perPerson: publicTotal / travelersCount.value
-                };
-            });
-
-            const itineraryWithTravel = computed(() => {
-                const list = filteredItinerary.value;
-                const result = [];
-                for (let i = 0; i < list.length; i++) {
-                    const currentItem = list[i];
-                    result.push({ ...currentItem, uiKey: `item-${currentItem.id}` });
-                    if (i < list.length - 1) {
-                        const nextItem = list[i+1];
-                        result.push({
-                            isTravelInfo: true,
-                            uiKey: `travel-${currentItem.id}-${nextItem.id}`,
-                            targetId: nextItem.id, 
-                            duration: nextItem.travelTime || 0,
-                            mode: nextItem.travelMode || 'subway'
-                        });
-                    }
-                }
-                return result;
-            });
-
-            // --- 方法 ---
-            const selectDate = (date) => { selectedDate.value = date; };
-            const getDay = (dateString) => new Date(dateString).getDate();
-            const getMonth = (dateString) => (new Date(dateString).getMonth() + 1) + '月';
-            const getDayNumber = (dateString) => travelDates.value.indexOf(dateString) + 1;
-            const getCityForDate = (dateString) => (itinerary.value.find(item => item.date === dateString) || {}).city || '';
-            const getGoogleMapsUrl = (location) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
-            const showSystemMsg = (text) => { systemMsg.text = text; systemMsg.isOpen = true; };
-
-            // Modal 操作
-            const openAddModal = () => { 
-                isEditing.value = false;
-                editingId.value = null;
-                Object.assign(modalItem, { time: '', type: 'activity', activity: '', location: '', flightNumber: '', from: '', to: '' });
-                isModalOpen.value = true; 
-            };
-
-            const openEditModal = (item) => {
-                isEditing.value = true;
-                editingId.value = item.id;
-                Object.assign(modalItem, { ...item });
-                isModalOpen.value = true;
-            };
-
-            const closeModal = () => { isModalOpen.value = false; };
-            
-            const addPreTripItem = () => { if (newPreTripTask.value.trim()) { preTripList.value.push({ task: newPreTripTask.value.trim(), done: false }); newPreTripTask.value = ''; closeModal(); } };
-
-            const handleSaveItem = () => {
-                if (isEditing.value) {
-                    const index = itinerary.value.findIndex(i => i.id === editingId.value);
-                    if (index !== -1) {
-                        const original = itinerary.value[index];
-                        const locationChanged = modalItem.location !== original.location;
-                        let newLat = original.lat;
-                        let newLng = original.lng;
-                        
-                        if (locationChanged && modalItem.location) {
-                            const city = getCityForDate(original.date);
-                            const baseCoords = cityCoordinates[city] || cityCoordinates['首爾'];
-                            newLat = baseCoords.lat + (Math.random() - 0.5) * 0.05;
-                            newLng = baseCoords.lng + (Math.random() - 0.5) * 0.05;
-                        }
-
-                        itinerary.value[index] = { ...original, ...modalItem, lat: newLat, lng: newLng };
-                    }
-                } else {
-                    if (!selectedDate.value || selectedDate.value === '行前') return;
-                    const city = getCityForDate(selectedDate.value);
-                    const baseCoords = cityCoordinates[city] || cityCoordinates['首爾'];
-                    const randomOffset = () => (Math.random() - 0.5) * 0.05;
-                    
-                    const itemToAdd = { 
-                        ...modalItem, 
-                        id: Date.now(), 
-                        date: selectedDate.value, 
-                        city: city,
-                        icon: '📍',
-                        lat: modalItem.type === 'activity' ? baseCoords.lat + randomOffset() : null,
-                        lng: modalItem.type === 'activity' ? baseCoords.lng + randomOffset() : null,
-                        travelTime: 0,
-                        travelMode: city === '濟州' ? 'car' : 'subway'
-                    };
-                    itinerary.value.push(itemToAdd);
-                }
-                closeModal();
-            };
-
-            const askDelete = (type, idOrIndex) => {
-                deleteModal.type = type;
-                deleteModal.id = idOrIndex;
-                deleteModal.isOpen = true;
-            };
-
-            const confirmDelete = () => {
-                const { type, id } = deleteModal;
-                if (type === 'itinerary') {
-                    itinerary.value = itinerary.value.filter(item => item.id != id);
-                } else if (type === 'preTrip') {
-                    preTripList.value.splice(id, 1);
-                } else if (type === 'shopping') {
-                    shoppingList.value.splice(id, 1);
-                } else if (type === 'expense') {
-                    expenses.value = expenses.value.filter(e => e.id !== id);
-                }
-                deleteModal.isOpen = false;
-            };
-
-            const updateTravelTime = (itemId, value) => { const item = itinerary.value.find(i => i.id === itemId); if (item) item.travelTime = parseInt(value) || 0; };
-            const updateTravelMode = (itemId, value) => { const item = itinerary.value.find(i => i.id === itemId); if (item) item.travelMode = value; };
-
-            const addShoppingItem = () => {
-                if (newShoppingItem.value.trim()) {
-                    shoppingList.value.push({ id: Date.now(), name: newShoppingItem.value.trim(), done: false });
-                    newShoppingItem.value = '';
-                }
-            };
-            
-            const addExpense = () => {
-                if (newExpense.amount > 0) {
-                    const amount = parseFloat(newExpense.amount);
-                    expenses.value.unshift({ 
-                        ...newExpense, 
-                        id: Date.now(), 
-                        amount, 
-                        hkdAmount: newExpense.currency === 'KRW' ? amount * exchangeRateKRWtoHKD.value : amount 
-                    });
-                    newExpense.description = ''; newExpense.amount = null;
-                }
-            };
-
-            // --- 匯出與匯入功能 ---
-            const exportData = () => {
-                const data = {
-                    itinerary: itinerary.value,
-                    expenses: expenses.value,
-                    shoppingList: shoppingList.value,
-                    preTripList: preTripList.value,
-                    travelersCount: travelersCount.value,
-                    exchangeRateKRWtoHKD: exchangeRateKRWtoHKD.value
-                };
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'travel_plan_backup.json';
-                a.click();
-                URL.revokeObjectURL(url);
-            };
-
-            const importData = (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const data = JSON.parse(e.target.result);
-                        if (data.itinerary) itinerary.value = data.itinerary;
-                        if (data.expenses) expenses.value = data.expenses;
-                        if (data.shoppingList) shoppingList.value = data.shoppingList;
-                        if (data.preTripList) preTripList.value = data.preTripList;
-                        if (data.travelersCount) travelersCount.value = data.travelersCount;
-                        if (data.exchangeRateKRWtoHKD) exchangeRateKRWtoHKD.value = data.exchangeRateKRWtoHKD;
-                        showSystemMsg('匯入成功！');
-                    } catch (err) {
-                        showSystemMsg('檔案格式錯誤，無法匯入。');
-                        console.error(err);
-                    }
-                };
-                reader.readAsText(file);
-                event.target.value = ''; 
-            };
-
-            // --- 本地存儲邏輯 (Local Storage) - 修正版 ---
-            const saveToLocalStorage = () => {
-                try {
-                    // 檢查是否支援 LocalStorage
-                    if (typeof localStorage === 'undefined') return;
-
-                    const dataToSave = {
-                        itinerary: itinerary.value,
-                        expenses: expenses.value,
-                        shoppingList: shoppingList.value,
-                        preTripList: preTripList.value,
-                        travelersCount: travelersCount.value,
-                        exchangeRateKRWtoHKD: exchangeRateKRWtoHKD.value
-                    };
-                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataToSave));
-                } catch (e) {
-                    console.warn("無法寫入 LocalStorage (可能是隱私模式或空間不足):", e);
-                }
-            };
-
-            const loadFromLocalStorage = () => {
-                try {
-                    // 檢查是否支援 LocalStorage
-                    if (typeof localStorage === 'undefined') return;
-
-                    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-                    if (saved) {
-                        const data = JSON.parse(saved);
-                        if (data.itinerary) itinerary.value = data.itinerary;
-                        if (data.expenses) expenses.value = data.expenses;
-                        if (data.shoppingList) shoppingList.value = data.shoppingList;
-                        if (data.preTripList) preTripList.value = data.preTripList;
-                        if (data.travelersCount) travelersCount.value = data.travelersCount;
-                        if (data.exchangeRateKRWtoHKD) exchangeRateKRWtoHKD.value = data.exchangeRateKRWtoHKD;
-                    }
-                } catch (e) {
-                    console.warn("無法讀取 LocalStorage (可能是隱私模式或資料損毀):", e);
-                    // 發生錯誤時，保持使用預設資料，不讓程式崩潰
-                }
-            };
-
-            const resetToDefault = () => {
-                try {
-                    if (typeof localStorage !== 'undefined') {
-                        localStorage.removeItem(LOCAL_STORAGE_KEY);
-                    }
-                } catch (e) {
-                    console.warn("清除 LocalStorage 失敗");
-                }
-                location.reload();
-            };
-
-            // --- 天氣 & 地圖 ---
-            const wmoToEmoji = (code) => {
-                if (code === 0) return '☀️'; if (code >= 1 && code <= 3) return '⛅️'; if (code >= 45 && code <= 48) return '🌫️'; if (code >= 51 && code <= 67) return '🌧️'; if (code >= 71 && code <= 77) return '❄️'; if (code >= 80 && code <= 82) return '🌦️'; if (code >= 95) return '⛈️'; return '☁️';
-            };
-
-            const fetchWeather = async () => {
-                if (selectedDate.value === '行前') return;
-                const city = currentCity.value;
-                if (!city || !cityCoordinates[city]) return;
-                const { lat, lng } = cityCoordinates[city];
-                const date = selectedDate.value;
-                weatherLoading.value = true;
-                currentWeather.value = null;
-                
-                const fallbackWeather = { max: city === '濟州' ? 12 : 2, min: city === '濟州' ? 6 : -5, icon: city === '濟州' ? '⛅️' : '❄️', desc: '歷史平均 (離線)' };
-
-                try {
-                    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&start_date=${date}&end_date=${date}`;
-                    const res = await fetch(url);
-                    if (!res.ok) throw new Error('Network response was not ok');
-                    const data = await res.json();
-                    
-                    if (data.daily && data.daily.time.length > 0) {
-                        currentWeather.value = { max: data.daily.temperature_2m_max[0], min: data.daily.temperature_2m_min[0], icon: wmoToEmoji(data.daily.weather_code[0]), desc: 'Open-Meteo 預測' };
-                    } else {
-                        currentWeather.value = fallbackWeather;
-                    }
-                } catch (e) { 
-                    console.log("Weather fetch skipped/failed (using fallback):", e); 
-                    currentWeather.value = fallbackWeather;
-                } finally { 
-                    weatherLoading.value = false; 
-                }
-            };
-
-            const renderDailyMap = () => {
-                const mapContainer = document.getElementById('daily-map');
-                if (!mapContainer) return;
-                
-                // 增加檢查 L 是否存在 (避免 CDN 載入失敗導致崩潰)
-                if (typeof L === 'undefined') {
-                    mapContainer.innerHTML = '<div class="flex items-center justify-center h-full text-xs text-gray-400">地圖無法載入 (離線模式)</div>';
-                    return;
-                }
-
-                if (mapInstance.value) { mapInstance.value.remove(); mapInstance.value = null; }
-                const dayPoints = filteredItinerary.value.filter(item => item.lat && item.lng);
-                
-                try {
-                    if (dayPoints.length === 0) {
-                        const city = currentCity.value;
-                        const center = cityCoordinates[city] || cityCoordinates['首爾'];
-                        mapInstance.value = L.map('daily-map').setView([center.lat, center.lng], 11);
-                    } else {
-                        mapInstance.value = L.map('daily-map');
-                        const latLngs = [];
-                        dayPoints.forEach((item) => {
-                            L.marker([item.lat, item.lng]).addTo(mapInstance.value).bindPopup(`<b>${item.time}</b><br>${item.activity}`);
-                            latLngs.push([item.lat, item.lng]);
-                        });
-                        if (latLngs.length > 1) { L.polyline(latLngs, { color: '#4A4A4A', weight: 3, dashArray: '5, 10' }).addTo(mapInstance.value); }
-                        const bounds = L.latLngBounds(latLngs);
-                        mapInstance.value.fitBounds(bounds, { padding: [30, 30] });
-                    }
-                    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19 }).addTo(mapInstance.value);
-                } catch (e) {
-                    console.error("Map render failed:", e);
-                }
-            };
-
-            // --- 啟動與監聽 ---
-            
-            // 1. 載入時先讀取 LocalStorage
-            onMounted(() => {
-                loadFromLocalStorage();
-            });
-
-            // 2. 監聽所有重要數據，變動時自動儲存
-            watch(
-                [itinerary, expenses, shoppingList, preTripList, travelersCount, exchangeRateKRWtoHKD], 
-                () => { saveToLocalStorage(); }, 
-                { deep: true }
-            );
-
-            watch(selectedDate, async (newVal) => { if (newVal !== '行前' && activeTab.value === 'itinerary') { fetchWeather(); await nextTick(); renderDailyMap(); } }, { immediate: true });
-            watch(activeTab, async (newVal) => { if (newVal === 'itinerary' && selectedDate.value !== '行前') { await nextTick(); renderDailyMap(); } });
-            watch(filteredItinerary, async () => { if (activeTab.value === 'itinerary' && selectedDate.value !== '行前') { await nextTick(); renderDailyMap(); } }, { deep: true });
-
-            return {
-                activeTab, exchangeRateKRWtoHKD, selectedDate, travelDates, filteredItinerary, itineraryWithTravel, contentTitle, currentCity, selectDate, getDay, getMonth, getDayNumber, getCityForDate,
-                preTripList, addPreTripItem,
-                isModalOpen, openAddModal, openEditModal, closeModal, isEditing, modalItem, newPreTripTask, handleSaveItem,
-                expenses, newExpense, accountingStats, addExpense, travelersCount,
-                updateTravelTime, updateTravelMode,
-                weatherLoading, currentWeather, getGoogleMapsUrl,
-                shoppingList, newShoppingItem, addShoppingItem,
-                exportData, importData,
-                deleteModal, systemMsg, askDelete, confirmDelete, showSystemMsg,
-                resetToDefault
-            };
-        }
-    }).mount('#app');
-</script>
+{
+  "exchangeRateKRWtoHKD": 0.0058,
+  "travelersCount": 6,
+  "preTripList": [
+    {
+      "task": "預訂首爾酒店",
+      "done": true
+    },
+    {
+      "task": "購買旅遊保險",
+      "done": false
+    }
+  ],
+  "shoppingList": [
+    {
+      "id": 1715842968001,
+      "name": "Olive Young 面膜",
+      "done": false
+    },
+    {
+      "id": 1715842968002,
+      "name": "Gentle Monster 墨鏡",
+      "done": false
+    },
+    {
+      "id": 1715842968003,
+      "name": "濟州島橘子巧克力",
+      "done": false
+    }
+  ],
+  "itinerary": [
+    {
+      "id": 1,
+      "date": "2025-12-24",
+      "time": "14:30",
+      "type": "flight",
+      "city": "首爾",
+      "flightNumber": "KE608",
+      "from": "HKG",
+      "to": "ICN",
+      "location": null,
+      "travelTime": 0,
+      "travelMode": "subway"
+    },
+    {
+      "id": 2,
+      "date": "2025-12-24",
+      "time": "17:00",
+      "type": "activity",
+      "city": "首爾",
+      "activity": "機場快線往弘大",
+      "location": "AREX Station",
+      "icon": "🚆",
+      "lat": 37.5575,
+      "lng": 126.9245,
+      "travelTime": 60,
+      "travelMode": "subway"
+    },
+    {
+      "id": 3,
+      "date": "2025-12-24",
+      "time": "19:00",
+      "type": "activity",
+      "city": "首爾",
+      "activity": "弘大烤肉晚餐",
+      "location": "Hongdae",
+      "icon": "🥩",
+      "lat": 37.5563,
+      "lng": 126.9225,
+      "travelTime": 15,
+      "travelMode": "walk"
+    },
+    {
+      "id": 4,
+      "date": "2025-12-25",
+      "time": "10:00",
+      "type": "activity",
+      "city": "首爾",
+      "activity": "景福宮",
+      "location": "Gyeongbokgung",
+      "icon": "🏯",
+      "lat": 37.5796,
+      "lng": 126.977,
+      "travelTime": 0,
+      "travelMode": "subway"
+    },
+    {
+      "id": 5,
+      "date": "2025-12-25",
+      "time": "14:00",
+      "type": "activity",
+      "city": "首爾",
+      "activity": "北村韓屋村",
+      "location": "Bukchon",
+      "icon": "📷",
+      "lat": 37.5826,
+      "lng": 126.985,
+      "travelTime": 20,
+      "travelMode": "walk"
+    },
+    {
+      "id": 6,
+      "date": "2025-12-25",
+      "time": "18:00",
+      "type": "activity",
+      "city": "首爾",
+      "activity": "明洞聖誕燈飾",
+      "location": "Myeong-dong",
+      "icon": "🎄",
+      "lat": 37.5636,
+      "lng": 126.9842,
+      "travelTime": 30,
+      "travelMode": "subway"
+    },
+    {
+      "id": 7,
+      "date": "2025-12-26",
+      "time": "11:00",
+      "type": "activity",
+      "city": "首爾",
+      "activity": "The Hyundai Seoul",
+      "location": "Yeouido",
+      "icon": "🛍️",
+      "lat": 37.526,
+      "lng": 126.9284,
+      "travelTime": 0,
+      "travelMode": "subway"
+    },
+    {
+      "id": 8,
+      "date": "2025-12-27",
+      "time": "11:00",
+      "type": "flight",
+      "city": "濟州",
+      "flightNumber": "7C123",
+      "from": "GMP",
+      "to": "CJU",
+      "location": null,
+      "travelTime": 0,
+      "travelMode": "car"
+    },
+    {
+      "id": 9,
+      "date": "2025-12-27",
+      "time": "15:00",
+      "type": "activity",
+      "city": "濟州",
+      "activity": "涯月邑咖啡廳",
+      "location": "Aewol",
+      "icon": "☕",
+      "lat": 33.4658,
+      "lng": 126.3195,
+      "travelTime": 40,
+      "travelMode": "car"
+    },
+    {
+      "id": 10,
+      "date": "2025-12-28",
+      "time": "10:00",
+      "type": "activity",
+      "city": "濟州",
+      "activity": "城山日出峰",
+      "location": "Seongsan",
+      "icon": "⛰️",
+      "lat": 33.458,
+      "lng": 126.9425,
+      "travelTime": 0,
+      "travelMode": "car"
+    },
+    {
+      "id": 11,
+      "date": "2025-12-29",
+      "time": "10:00",
+      "type": "activity",
+      "city": "濟州",
+      "activity": "牛島一日遊",
+      "location": "Udo",
+      "icon": "🚢",
+      "lat": 33.5042,
+      "lng": 126.9538,
+      "travelTime": 0,
+      "travelMode": "car"
+    },
+    {
+      "id": 12,
+      "date": "2025-12-30",
+      "time": "12:00",
+      "type": "activity",
+      "city": "濟州",
+      "activity": "東門市場",
+      "location": "Dongmun Market",
+      "icon": "🍊",
+      "lat": 33.5126,
+      "lng": 126.5283,
+      "travelTime": 0,
+      "travelMode": "car"
+    },
+    {
+      "id": 13,
+      "date": "2025-12-31",
+      "time": "14:00",
+      "type": "flight",
+      "city": "濟州",
+      "flightNumber": "KE100",
+      "from": "CJU",
+      "to": "HKG",
+      "location": null,
+      "travelTime": 0,
+      "travelMode": "car"
+    }
+  ],
+  "expenses": [
+    {
+      "id": 1715842968004,
+      "description": "弘大烤肉 (公數)",
+      "amount": 120000,
+      "currency": "KRW",
+      "type": "public"
+    },
+    {
+      "id": 1715842968005,
+      "description": "便利店零食 (私數)",
+      "amount": 5000,
+      "currency": "KRW",
+      "type": "private"
+    }
+  ]
+}
